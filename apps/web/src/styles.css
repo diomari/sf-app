@@ -59,3 +59,214 @@ p:last-child {
   color: #4a5870;
   line-height: 1.6;
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #285ea8;
+  border-radius: 0.5rem;
+  background: #285ea8;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button.danger {
+  border-color: #b3261e;
+  background: #b3261e;
+}
+
+.app-shell {
+  display: block;
+  padding: 1.5rem;
+  place-items: initial;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.accounts-page {
+  width: min(72rem, 100%);
+  margin: 0 auto;
+}
+
+.accounts-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.search-bar input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.hint {
+  margin: 0;
+  color: #4a5870;
+  font-size: 0.85rem;
+}
+
+.status-region:empty {
+  display: none;
+}
+
+.success {
+  color: #1a7f37;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #4a5870;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.5rem;
+}
+
+table {
+  width: 100%;
+  min-width: 48rem;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid #eef2f8;
+  white-space: nowrap;
+}
+
+thead th {
+  background: #f4f7fb;
+  position: sticky;
+  top: 0;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.row-actions button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(23 32 51 / 55%);
+  z-index: 10;
+}
+
+.dialog {
+  width: min(40rem, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1rem 3rem rgb(28 50 82 / 25%);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.form-field input,
+.form-field textarea {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.form-error {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.field-error {
+  margin: 0;
+  color: #b3261e;
+  font-size: 0.8rem;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .accounts-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
