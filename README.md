@@ -4,7 +4,7 @@ Greenfield AWS staging application for authenticated Salesforce Account search, 
 
 ## Project status
 
-Planning and architecture baseline. Application code and infrastructure have not yet been scaffolded or deployed.
+Milestones 1 and 2 provide the workspace foundation, explicit Account contracts, and Hono API shell. Salesforce connectivity, authentication, Account routes, and deployable application resources are intentionally deferred to later milestones. Nothing has been deployed.
 
 ## Start here
 
@@ -15,4 +15,15 @@ Planning and architecture baseline. Application code and infrastructure have not
 - [Coding-agent instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
 
-Implementation begins with Gate 0 decisions and Milestone 1 in the implementation plan. Do not configure real secrets or deploy resources until the relevant owners approve the environment and security decisions.
+## Local verification
+
+Use Node.js 22.22.0 and pnpm 10.28.0:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm verify
+```
+
+Focused commands are available as `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm cdk:synth`. CDK synthesis creates only the empty staging foundation stack in `ap-southeast-1`; it does not deploy.
+
+Do not configure real secrets, connect to Salesforce, or deploy resources without explicit approval for the applicable later milestone.
