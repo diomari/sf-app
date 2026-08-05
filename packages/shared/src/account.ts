@@ -174,7 +174,31 @@ export const accountPageSchema = z
   })
   .strict()
 
+export const createAccountResponseSchema = z
+  .object({
+    data: z
+      .object({
+        id: salesforceAccountIdSchema,
+        name: requiredTrimmedString('Name', 255),
+      })
+      .strict(),
+  })
+  .strict()
+
+export const updateAccountResponseSchema = z
+  .object({
+    data: z
+      .object({
+        id: salesforceAccountIdSchema,
+        updated: z.literal(true),
+      })
+      .strict(),
+  })
+  .strict()
+
 export type Account = z.infer<typeof accountSchema>
 export type AccountPage = z.infer<typeof accountPageSchema>
 export type CreateAccountInput = z.infer<typeof createAccountInputSchema>
 export type UpdateAccountInput = z.infer<typeof updateAccountInputSchema>
+export type CreateAccountResponse = z.infer<typeof createAccountResponseSchema>
+export type UpdateAccountResponse = z.infer<typeof updateAccountResponseSchema>

@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   accountSchema,
   createAccountInputSchema,
+  createAccountResponseSchema,
   isSalesforceAccountId,
   updateAccountInputSchema,
+  updateAccountResponseSchema,
 } from '../src/index.js'
 
 const validAccountId = '001000000000001AAA'
@@ -164,6 +166,47 @@ describe('updateAccountInputSchema', () => {
     ).toBe(false)
     expect(
       updateAccountInputSchema.safeParse({ arbitrary: 'value' }).success,
+    ).toBe(false)
+  })
+})
+
+describe('createAccountResponseSchema', () => {
+  it('accepts the documented create response shape', () => {
+    expect(
+      createAccountResponseSchema.parse({
+        data: { id: validAccountId, name: 'Example Company' },
+      }),
+    ).toEqual({ data: { id: validAccountId, name: 'Example Company' } })
+  })
+
+  it('rejects an invalid Account ID or unknown fields', () => {
+    expect(
+      createAccountResponseSchema.safeParse({
+        data: { id: 'not-an-id', name: 'Example Company' },
+      }).success,
+    ).toBe(false)
+    expect(
+      createAccountResponseSchema.safeParse({
+        data: { id: validAccountId, name: 'Example Company', extra: true },
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('updateAccountResponseSchema', () => {
+  it('accepts the documented update response shape', () => {
+    expect(
+      updateAccountResponseSchema.parse({
+        data: { id: validAccountId, updated: true },
+      }),
+    ).toEqual({ data: { id: validAccountId, updated: true } })
+  })
+
+  it('rejects updated: false and unknown fields', () => {
+    expect(
+      updateAccountResponseSchema.safeParse({
+        data: { id: validAccountId, updated: false },
+      }).success,
     ).toBe(false)
   })
 })
