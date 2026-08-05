@@ -22,7 +22,7 @@ If documents conflict, stop and report the conflict. Approved ADRs/decision-log 
 - Use explicit DTOs, strict schemas, allowlisted fields, fixed SOQL, and normalized errors.
 - Only `/api/health` is public. Every other route requires the approved Cognito access-token scope.
 - Do not weaken Cognito, API Gateway, IAM, CORS, CSP, CloudFront, S3, throttling, timeout, or log-redaction controls to make development easier.
-- Do not automatically retry create/update after an ambiguous failure. A Salesforce `401` may trigger one token refresh and one replay according to the approved client policy.
+- Do not automatically retry create, update, or delete after an ambiguous failure. An explicit Salesforce `401` may trigger one token refresh and one replay according to the approved client policy.
 - Treat the shared Salesforce integration user as a privileged trust boundary. Do not invent per-user authorization behavior.
 - Keep AWS code in `infrastructure` or adapters and Salesforce-specific behavior in `apps/api`.
 
@@ -43,8 +43,8 @@ Explicit human approval is required before:
 - deploying or destroying AWS resources;
 - reading, creating, rotating, or changing real secrets;
 - connecting to or mutating a real Salesforce org;
-- changing IAM, Cognito, OAuth scopes, Salesforce permissions, network topology, domains, production retention/removal policies, throttles, or reserved concurrency;
-- adding persistence, queues, caches, roles, delete operations, or new Account fields;
+- changing IAM, Cognito, OAuth scopes, Salesforce permissions, network topology, domains, staging retention/removal policies, throttles, or reserved concurrency;
+- adding persistence, queues, caches, roles, operations beyond the approved search/list/create/update/delete scope, or new Account fields;
 - introducing a major dependency or changing the package manager/runtime baseline.
 
 Never use real customer Account data in tests or fixtures.

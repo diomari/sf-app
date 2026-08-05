@@ -2,8 +2,9 @@
 
 ## Technical Implementation Specification
 
-**Status:** Phase 1 implementation basis  
-**Deployment:** AWS  
+**Status:** Phase 1 implementation basis, amended 2026-08-05
+
+**Deployment:** One staging environment in AWS Singapore (`ap-southeast-1`)
 **Primary system of record:** Salesforce  
 **Application database:** None in the baseline release  
 **Scope:** Application login, Salesforce Account listing, creation and update
@@ -15,10 +16,12 @@
 Build a small web application that allows an authenticated application user to:
 
 1. Sign in to the application.
-2. View existing Salesforce Account records in a table.
-3. Create a new Salesforce Account.
-4. Update an existing Salesforce Account.
-5. See the latest data after a successful create or update.
+2. Search Salesforce Accounts by Account Name or Account Number.
+3. View Salesforce Account records in a paginated table with 50 records per page.
+4. Create a new Salesforce Account.
+5. Update an existing Salesforce Account.
+6. Delete an existing Salesforce Account after explicit confirmation.
+7. See the latest data after a successful create, update or delete.
 
 Salesforce remains the authoritative store for Account records. The application must not copy Account records into DynamoDB, RDS or another application database.
 
@@ -30,20 +33,20 @@ The application is a secure frontend and API layer over Salesforce.
 
 | Decision | Baseline implementation |
 |---|---|
-| Deployment | AWS |
+| Deployment | One direct staging environment in AWS Singapore (`ap-southeast-1`); no production environment |
 | Frontend | React, Vite and TypeScript |
 | Backend | Hono, TypeScript and AWS Lambda |
 | API entry point | API Gateway HTTP API |
 | Application login | Amazon Cognito User Pool with Managed Login and Authorization Code + PKCE |
 | API authorization | API Gateway HTTP API JWT authorizer |
 | Salesforce authentication | OAuth Client Credentials Flow using a dedicated integration user |
-| Salesforce fallback | JWT Bearer Flow if Client Credentials is unavailable or not approved |
+| Salesforce fallback | None in staging; fail closed if Client Credentials is not configured |
 | Salesforce integration | Salesforce REST API |
 | Infrastructure | AWS CDK with TypeScript |
 | Secrets | AWS Secrets Manager |
 | Logging | CloudWatch Logs |
 | Business-data storage | Salesforce only |
-| Initial Account operations | List, create and update |
+| Initial Account operations | Search, paginated list (50/page), create, update and delete |
 
 Do not add Cognito groups, custom authorization Lambdas, application sessions, DynamoDB or RDS unless a later requirement explicitly needs them.
 
@@ -100,7 +103,7 @@ Do not add Cognito groups, custom authorization Lambdas, application sessions, D
 
 #### React frontend
 
-- Render login, Account table and Account form.
+- Render login, Account search, paginated Account table, Account form and delete confirmation.
 - Start Cognito Managed Login.
 - Attach the Cognito access token to API requests.
 - Display loading, empty, success and error states.
@@ -110,15 +113,16 @@ Do not add Cognito groups, custom authorization Lambdas, application sessions, D
 #### CloudFront and S3
 
 - Serve the compiled React application over HTTPS.
-- Keep the S3 bucket private where practical.
-- Route browser API calls to the API Gateway origin or use a configured API base URL.
+- Keep the S3 bucket private with S3 Block Public Access and CloudFront Origin Access Control.
+- Route browser `/api/*` calls through CloudFront to the API Gateway default endpoint. No custom domain is used in staging; the directly reachable API endpoint must enforce the same JWT, throttling, payload and no-cache controls.
+- Configure the API origin request policy so CloudFront uses the API Gateway origin host and does not forward the viewer `Host` header. Forward only required headers, query strings and methods, and verify `/api/*` routing with a CDK assertion and deployed test.
 
 #### Cognito User Pool
 
 - Manage application users.
 - Provide Managed Login.
 - Issue JWT access tokens using Authorization Code + PKCE.
-- Use one manually created user for the initial demo.
+- Use admin-created users only; disable self-sign-up and leave MFA disabled for this staging environment.
 
 #### API Gateway HTTP API
 
@@ -133,7 +137,7 @@ Do not add Cognito groups, custom authorization Lambdas, application sessions, D
 - Validate request bodies.
 - Read Salesforce configuration from Secrets Manager.
 - Acquire and cache Salesforce access tokens.
-- Query, create and update Salesforce Accounts.
+- Search, page through, create, update and delete Salesforce Accounts.
 - Normalize Salesforce errors into application errors.
 - Write redacted structured logs.
 
@@ -142,7 +146,7 @@ Do not add Cognito groups, custom authorization Lambdas, application sessions, D
 - Store Account records.
 - Authenticate the backend integration user.
 - Execute the approved SOQL query.
-- Create and update Account records through the REST API.
+- Create, update and delete Account records through the REST API.
 
 ---
 
@@ -172,8 +176,9 @@ Implementation rules:
 - Do not use the OAuth implicit grant.
 - Do not create a custom password or session system.
 - Do not store Cognito client secrets in frontend code.
-- Use the Cognito access token for API authorization.
-- Configure the API Gateway JWT authorizer with the Cognito issuer URL and audience/client ID.
+- Use only the Cognito access token for API authorization.
+- Define the Cognito resource-server scope `accounts-api/access` and request it in the frontend authorization flow.
+- Configure the API Gateway JWT authorizer with the Cognito issuer URL and audience/client ID, and configure `authorizationScopes: ['accounts-api/access']` on every protected route. ID tokens and access tokens without the scope must be rejected.
 - For the first release, all authenticated users have the same application permissions.
 
 References:
@@ -204,7 +209,7 @@ Implementation rules:
 - Retry one time after invalidating the cached token when Salesforce returns `401`.
 - Do not repeatedly retry failed Salesforce requests.
 
-If Client Credentials Flow is not available or approved for the Salesforce organization, use JWT Bearer Flow as the fallback. Store the private key in Secrets Manager.
+Client Credentials is the only approved staging authentication mode. If it is unavailable or incomplete, fail closed and report `not_configured`; do not fall back to JWT Bearer Flow without a new approved architecture decision.
 
 Reference:
 
@@ -287,7 +292,7 @@ Keep Salesforce-specific logic inside `apps/api`. The frontend should use applic
 
 ## 6. API contract
 
-All routes except `/api/health` should require a valid Cognito JWT.
+All routes except `/api/health` require a valid Cognito access token containing the `accounts-api/access` scope. API Gateway must enforce the scope at each protected route; a valid ID token is not sufficient.
 
 ### Health check
 
@@ -334,9 +339,11 @@ Never return client IDs, secrets, token values or raw Salesforce errors.
 ### List Accounts
 
 ```http
-GET /api/accounts
+GET /api/accounts?search=example&cursor=<opaque-cursor>
 Authorization: Bearer <cognito-access-token>
 ```
+
+Both query parameters are optional. The fixed page size is 50. When present after trimming, `search` must contain 2–100 characters and is applied only to Account `Name` and `AccountNumber`; reject other lengths with `VALIDATION_ERROR`. The backend must safely escape the search literal and must never concatenate unvalidated syntax into SOQL.
 
 Response:
 
@@ -370,11 +377,16 @@ Response:
       "createdDate": "2026-08-05T10:00:00.000Z",
       "lastModifiedDate": "2026-08-05T10:00:00.000Z"
     }
-  ]
+  ],
+  "meta": {
+    "pageSize": 50,
+    "hasMore": true,
+    "nextCursor": "opaque-signed-cursor"
+  }
 }
 ```
 
-The backend owns the SOQL query. Do not accept raw SOQL, object names or field lists from the browser.
+The backend owns the SOQL templates. Do not accept raw SOQL, object names, field lists, offsets or Salesforce `nextRecordsUrl` values from the browser. Pagination must use a signed opaque keyset cursor containing only the approved ordering keys and a hash of the normalized search criteria. Sign with HMAC-SHA256 using the Secrets Manager cursor key and expire cursors after 15 minutes. Reject expired, malformed, tampered or search-mismatched cursors.
 
 Recommended first query:
 
@@ -406,8 +418,8 @@ SELECT Id,
        CreatedDate,
        LastModifiedDate
 FROM Account
-ORDER BY LastModifiedDate DESC
-LIMIT 100
+ORDER BY LastModifiedDate DESC, Id DESC
+LIMIT 51
 ```
 
 ### Create Account
@@ -465,10 +477,11 @@ Return HTTP `201 Created` for a successful creation.
 ```http
 PATCH /api/accounts/:id
 Authorization: Bearer <cognito-access-token>
+If-Unmodified-Since: Tue, 05 Aug 2026 10:00:00 GMT
 Content-Type: application/json
 ```
 
-The request body may contain any writable Account fields from the create contract. `name` remains required when the service or Salesforce requires it.
+The request body may contain any writable Account fields from the create contract. PATCH may omit `name`, but when supplied, `name` must be a nonblank, non-null string. Reject an empty body. Require `If-Unmodified-Since`, derived from the Account's `lastModifiedDate`; return `428 PRECONDITION_REQUIRED` when absent or invalid. Pass the validated precondition to Salesforce and return `412 PRECONDITION_FAILED` when the record changed after that timestamp.
 
 Response:
 
@@ -482,6 +495,15 @@ Response:
 ```
 
 Return HTTP `200 OK` for a successful update.
+
+### Delete Account
+
+```http
+DELETE /api/accounts/:id
+Authorization: Bearer <cognito-access-token>
+```
+
+Return HTTP `204 No Content` after Salesforce accepts the deletion. Validate that the ID is a canonical Account ID. The UI must require explicit confirmation that displays the Account name. Do not automatically retry a delete after a timeout, network failure, `429` or `5xx`, because the outcome may be ambiguous. Normalize Salesforce dependency, permission and validation failures without returning raw response bodies.
 
 ### Error response
 
@@ -507,7 +529,9 @@ Recommended error codes:
 | Missing or invalid JWT | 401 | `UNAUTHORIZED` |
 | Cognito user lacks permission | 403 | `FORBIDDEN` |
 | Account not found | 404 | `ACCOUNT_NOT_FOUND` |
-| Salesforce rejected the request | 422 | `SALESFORCE_REJECTED` |
+| Update precondition missing or invalid | 428 | `PRECONDITION_REQUIRED` |
+| Concurrent update conflict | 412 | `PRECONDITION_FAILED` |
+| Salesforce rejected the request, including a blocked delete | 422 | `SALESFORCE_REJECTED` |
 | Salesforce rate limit | 429 | `RATE_LIMITED` |
 | Salesforce unavailable | 503 | `INTEGRATION_UNAVAILABLE` |
 | Unexpected backend failure | 500 | `INTERNAL_ERROR` |
@@ -628,15 +652,22 @@ Suggested interface:
 ```ts
 export interface SalesforceClient {
   query<T>(soql: string): Promise<T>
-  create<T>(objectName: string, payload: unknown): Promise<T>
-  update(objectName: string, recordId: string, payload: unknown): Promise<void>
+  create<T>(objectName: 'Account', payload: unknown): Promise<T>
+  update(
+    objectName: 'Account',
+    recordId: string,
+    payload: unknown,
+    ifUnmodifiedSince: string
+  ): Promise<void>
+  delete(objectName: 'Account', recordId: string): Promise<void>
 }
 ```
 
 The client must:
 
 - set the Salesforce Bearer authorization header;
-- set JSON content headers for create and update;
+- set JSON content headers for create and update and `If-Unmodified-Since` for update;
+- expose only a fixed Account delete operation;
 - apply a request timeout;
 - handle non-2xx responses;
 - redact authorization headers from logs;
@@ -646,21 +677,31 @@ The client must:
 
 The Account service should:
 
-- own the fixed SOQL query;
+- own fixed SOQL templates for list, search and keyset pagination;
 - map Salesforce fields to application fields;
 - map application fields to Salesforce fields;
 - remove empty optional values where appropriate;
 - reject unknown or read-only fields;
-- validate Salesforce IDs for update requests;
+- validate Salesforce IDs for update and delete requests;
+- create and verify signed opaque cursors bound to normalized search criteria;
+- delete only Account records and never retry an ambiguous delete;
 - return application DTOs rather than raw Salesforce responses.
 
 Suggested methods:
 
 ```ts
 export interface SalesforceAccountService {
-  listAccounts(): Promise<Account[]>
+  listAccounts(input: { search?: string; cursor?: string }): Promise<{
+    data: Account[]
+    meta: { pageSize: 50; hasMore: boolean; nextCursor: string | null }
+  }>
   createAccount(input: CreateAccountInput): Promise<CreatedAccount>
-  updateAccount(id: string, input: UpdateAccountInput): Promise<UpdatedAccount>
+  updateAccount(
+    id: string,
+    input: UpdateAccountInput,
+    ifUnmodifiedSince: string
+  ): Promise<UpdatedAccount>
+  deleteAccount(id: string): Promise<void>
 }
 ```
 
@@ -679,8 +720,11 @@ App
     │   ├── Application title
     │   └── Sign out button
     └── AccountPage
+        ├── AccountSearch
         ├── AccountForm
         ├── AccountsTable
+        ├── PaginationControls
+        ├── DeleteConfirmation
         ├── LoadingState
         ├── EmptyState
         └── ErrorState
@@ -700,6 +744,9 @@ Display:
 - Billing Country
 - Last Modified Date
 - Edit action
+- Delete action
+
+Search is debounced, keyboard accessible, and resets pagination when the term changes. Pagination uses only backend-issued cursors and provides previous/next controls; the frontend may keep the cursor history for the current browser session.
 
 The table should be readable on smaller screens. Use a responsive layout or horizontal scrolling rather than hiding important fields silently.
 
@@ -714,7 +761,8 @@ Behavior:
 - Submit is disabled while the request is running.
 - Validation errors appear near the relevant fields.
 - Successful create or update closes or resets the form.
-- The Account list refreshes after success.
+- Delete requires an explicit confirmation showing the Account name and disables controls while pending.
+- The current Account page refreshes after successful create, update or delete.
 - The user sees a success notification.
 
 ### API client
@@ -769,7 +817,7 @@ SALESFORCE_API_VERSION
 LOG_LEVEL
 ```
 
-The Salesforce client ID, client secret, login URL and optional JWT private key must be read from Secrets Manager.
+The Salesforce client ID, client secret, approved sandbox login/My Domain URL and cursor-signing key must be read from Secrets Manager.
 
 Example secret shape:
 
@@ -777,8 +825,8 @@ Example secret shape:
 {
   "clientId": "replace-out-of-band",
   "clientSecret": "replace-out-of-band",
-  "loginUrl": "https://login.salesforce.com",
-  "privateKey": "optional-for-jwt-bearer-flow"
+  "loginUrl": "https://replace-with-approved-sandbox-my-domain",
+  "cursorSigningKey": "replace-with-random-32-byte-or-stronger-secret"
 }
 ```
 
@@ -811,7 +859,7 @@ Do not put Salesforce secrets into the React build.
 
 ### CORS
 
-Allow only the deployed frontend origin in production.
+Allow only the generated staging CloudFront origin in the deployed environment. The API Gateway endpoint remains directly reachable because no custom domain is available, but CORS is not an authorization control; JWT scope validation and throttling must protect both access paths.
 
 For local development, allow the configured local origin explicitly. Do not use unrestricted `*` CORS when authenticated API requests are enabled.
 
@@ -819,7 +867,7 @@ For local development, allow the configured local origin explicitly. Do not use 
 
 ## 11. Configuration files
 
-Use separate configuration for local, staging and production.
+Use separate local developer configuration and one deployed staging configuration. Production configuration is out of scope.
 
 ### Frontend configuration
 
@@ -851,6 +899,20 @@ If required configuration is missing, return a controlled `not_configured` statu
 ---
 
 ## 12. Error handling and reliability
+
+### Approved staging limits
+
+- Maximum request body: 64 KiB, enforced before JSON processing where practical.
+- Maximum serialized API response: 1 MiB.
+- API Gateway aggregate throttle: 2 requests/second with burst 5.
+- Create, update and delete route throttle: 1 request/second with burst 2.
+- Lambda reserved concurrency: 5.
+- Lambda timeout: 15 seconds.
+- Salesforce request timeout: 10 seconds, or earlier when remaining Lambda time requires it.
+- CloudWatch log retention: 30 days.
+- AWS monthly budget alarm: USD 25.
+- Alarm recipient: `diom.sea@gmail.com`.
+- Salesforce daily and concurrent API quotas must be confirmed before deployment.
 
 ### Salesforce status handling
 
@@ -887,9 +949,10 @@ Never log:
 - Authorization headers;
 - private keys;
 - full request bodies;
+- search terms or cursor contents;
 - full Salesforce response bodies.
 
-Set CloudWatch log retention explicitly.
+Set CloudWatch log retention to 30 days and route staging operational and budget alarms to `diom.sea@gmail.com`.
 
 ---
 
@@ -901,6 +964,9 @@ Test:
 
 - Account request validation;
 - create and update field mapping;
+- search normalization and SOQL literal escaping;
+- cursor signing, expiry, tamper detection and search binding;
+- delete ID validation and ambiguous-failure non-retry behavior;
 - read-only field rejection;
 - URL validation;
 - Salesforce ID validation;
@@ -915,10 +981,15 @@ Test:
 - `GET /api/health`;
 - missing JWT behavior;
 - invalid JWT behavior through the deployed authorizer;
-- `GET /api/accounts`;
+- Cognito ID-token rejection and access-token rejection for missing/wrong `accounts-api/access` scope, issuer, audience/client or expiry;
+- `GET /api/accounts` with first page, next cursor, final page and 50-record limit;
+- Account Name and Account Number search, normalization and safely escaped special characters;
+- malformed, expired, tampered and search-mismatched cursors;
 - valid `POST /api/accounts`;
 - invalid `POST /api/accounts`;
-- valid `PATCH /api/accounts/:id`;
+- valid `PATCH /api/accounts/:id`, missing/invalid `If-Unmodified-Since` (`428`) and stale precondition (`412`);
+- valid and rejected `DELETE /api/accounts/:id`;
+- delete confirmation is a frontend requirement and delete is not retried after ambiguous failure;
 - invalid Account ID;
 - Salesforce `401` retry;
 - Salesforce `403`, `429` and `5xx` handling.
@@ -933,10 +1004,12 @@ Test:
 - authenticated page rendering;
 - Accounts loading state;
 - empty state;
-- table rendering;
+- table rendering and 50-item cursor pagination;
+- debounced Name/Account Number search and pagination reset;
 - required field validation;
 - create success and list refresh;
 - update success and list refresh;
+- delete confirmation, cancellation, success and list refresh;
 - API error display;
 - sign-out behavior.
 
@@ -949,9 +1022,11 @@ After deployment:
 3. Confirm the Accounts table loads.
 4. Create a test Account.
 5. Confirm the record exists in Salesforce.
-6. Update the test Account.
-7. Confirm the updated value appears in Salesforce and the UI.
-8. Confirm CloudWatch logs contain no credentials or tokens.
+6. Search for the test Account and exercise next/previous pagination when enough disposable records exist.
+7. Update the test Account.
+8. Confirm the updated value appears in Salesforce and the UI.
+9. Delete the test Account after explicit confirmation and verify it no longer appears in the active Salesforce Account list.
+10. Confirm CloudWatch logs contain no credentials, tokens, search terms or Account payload values.
 
 ---
 
@@ -974,21 +1049,22 @@ Implement in the following order. Do not build all features at once.
 - Implement Secrets Manager access behind an interface.
 - Implement Salesforce authentication.
 - Implement the Salesforce client.
-- Implement `GET /api/accounts`.
+- Implement `GET /api/accounts` with bounded Name/Account Number search and signed cursor pagination at 50 records per page.
 - Add unit and API tests.
 
-Exit criterion: the backend can list Accounts from Salesforce in a controlled test environment.
+Exit criterion: the backend can search and page through Accounts from Salesforce in a controlled test environment without exposing query or cursor internals.
 
-### Step 3: Add create and update
+### Step 3: Add create, update and delete
 
 - Add explicit Account schemas.
 - Add field mapping.
 - Implement `POST /api/accounts`.
 - Implement `PATCH /api/accounts/:id`.
+- Implement `DELETE /api/accounts/:id` with ID validation and no ambiguous-failure retry.
 - Add Salesforce error normalization.
 - Add tests for valid, invalid and upstream-failure cases.
 
-Exit criterion: create and update work through the backend without exposing Salesforce credentials.
+Exit criterion: create, update and delete work through the backend without exposing Salesforce credentials or accidentally repeating ambiguous writes.
 
 ### Step 4: Add Cognito authentication
 
@@ -1002,13 +1078,14 @@ Exit criterion: unauthenticated API requests fail and authenticated users can ca
 
 ### Step 5: Build the frontend
 
+- Build Account Name/Account Number search and 50-record pagination controls.
 - Build the Accounts table.
-- Build the create/update form.
+- Build the create/update form and delete confirmation.
 - Add loading, empty, validation, success and error states.
-- Refresh data after create and update.
+- Refresh data after create, update and delete.
 - Add responsive behavior.
 
-Exit criterion: a logged-in user can list, create and update Accounts through the UI.
+Exit criterion: a logged-in user can search, paginate, create, update and delete Accounts through the UI.
 
 ### Step 6: Add AWS infrastructure
 
@@ -1075,10 +1152,12 @@ The baseline implementation is complete when:
 - the React app is deployed through S3 and CloudFront;
 - Cognito protects the application and API;
 - the Hono Lambda can authenticate to Salesforce;
-- users can list Account records;
+- users can search Account Name and Account Number;
+- users can page through Account records in 50-record pages;
 - users can create Account records;
 - users can update Account records;
-- the UI refreshes after create and update;
+- users can delete Account records after explicit confirmation;
+- the UI refreshes after create, update and delete;
 - validation and upstream errors are handled safely;
 - Salesforce credentials never reach the browser;
 - no separate application database is used;
@@ -1095,8 +1174,7 @@ Do not implement these unless separately approved:
 - Salesforce interactive OAuth for each user;
 - encrypted refresh-token persistence;
 - application roles and permissions;
-- search, pagination or advanced filtering;
-- delete Accounts;
+- advanced filtering beyond the approved Account Name and Account Number search;
 - audit history outside Salesforce;
 - background synchronization;
 - DynamoDB or RDS;

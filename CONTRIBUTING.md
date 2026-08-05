@@ -33,8 +33,8 @@ Keep pull requests aligned to one milestone or vertical slice. Include:
 - deployment/rollback notes;
 - residual risk and deferred work.
 
-Independent review is required for identity, OAuth, IAM, Salesforce permissions, CloudFront/API caching, network topology, secrets, throttles/concurrency, and production deployment changes.
+Independent review is required for identity, OAuth, IAM, Salesforce permissions, CloudFront/API caching, network topology, secrets, throttles/concurrency, and staging deployment changes.
 
 ## Deployment safety
 
-Pull requests must not deploy. Staging and production deployment use approved CI roles with short-lived credentials. Production requires an approval gate and promotion of an artifact already validated in staging. Never run destructive CDK operations without explicit approval and a reviewed cleanup/retention plan.
+Pull requests must not deploy. The single staging environment uses an approved, staging-scoped CI role with short-lived credentials and an explicit deployment approval gate. Production deployment and promotion are out of scope. Never run destructive CDK operations without explicit approval and a reviewed cleanup/retention plan.

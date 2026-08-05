@@ -1,6 +1,6 @@
 # Salesforce Account Management App
 
-Greenfield AWS application for authenticated Salesforce Account listing, creation, and update. Salesforce remains the sole Account system of record.
+Greenfield AWS staging application for authenticated Salesforce Account search, 50-record cursor pagination, creation, update, and confirmed deletion. Salesforce remains the sole Account system of record.
 
 ## Project status
 
