@@ -17,6 +17,13 @@ cdk.out/
 *.key
 *.p12
 *.pfx
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.envrc
+.direnv/
 .aws/
 .salesforce/
 .sfdx/
