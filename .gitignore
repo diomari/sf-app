@@ -1,0 +1,40 @@
+# Dependencies and builds
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# AWS CDK
+cdk.out/
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.salesforce/
+.sfdx/
+.sf/
+
+# Test, agent, and tool output
+playwright-report/
+test-results/
+.nyc_output/
+.pi-subagents/
+*.log
+progress.md
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Temporary files
+.tmp/
+tmp/
